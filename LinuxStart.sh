@@ -10,7 +10,8 @@ source /etc/default/locale
 sudo apt install -y fcitx-mozc
 sudo apt install -y task-japanese-desktop
 sudo apt install -y  exfat-fuse
-sudo ln -s /usr/sbin/mount.exfat-fuse /sbin/mount.exfat 
+sudo ln -s /usr/sbin/mount.exfat-fuse /sbin/mount.exfat
+curl -fsS https://dl.brave.com/install.sh | sh
 
 #Yt-dlp_Install
 sudo wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
