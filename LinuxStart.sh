@@ -28,7 +28,9 @@ cd /usr/bin/
 #Ruby_&&_Narou.rb_Install
 sudo apt install -y git curl libssl-dev libreadline-dev zlib1g-dev autoconf bison build-essential libyaml-dev libreadline-dev libncurses5-dev libffi-dev libgdbm-dev
 sudo apt install -y ruby-full
-gem install narou
+sudo gem install narou
+wget -P /var/lib/gems/3.1.0/gems/narou-3.9.1/webnovel/ https://github.com/whiteleaf7/narou/blob/304aea554f918b6104225aa27a21febcc7fd19e7/webnovel/ncode.syosetu.com.yaml
+wget -P /var/lib/gems/3.1.0/gems/narou-3.9.1/webnovel/ https://github.com/whiteleaf7/narou/blob/304aea554f918b6104225aa27a21febcc7fd19e7/webnovel/novel18.syosetu.com.yaml
 """
 curl -sL https://github.com/rbenv/rbenv-installer/raw/main/bin/rbenv-installer | bash -
 echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> ~/.bashrc
