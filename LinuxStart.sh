@@ -32,7 +32,8 @@ sudo apt install -y ruby-full
 sudo gem install narou
 wget -P /var/lib/gems/3.1.0/gems/narou-3.9.1/webnovel/ https://github.com/whiteleaf7/narou/blob/304aea554f918b6104225aa27a21febcc7fd19e7/webnovel/ncode.syosetu.com.yaml
 wget -P /var/lib/gems/3.1.0/gems/narou-3.9.1/webnovel/ https://github.com/whiteleaf7/narou/blob/304aea554f918b6104225aa27a21febcc7fd19e7/webnovel/novel18.syosetu.com.yaml
-
+sudo gem install tilt -v 2.4.0
+sudo gem uninstall tilt -v 2.6.0
 #re-update
 sudo apt update && sudo apt upgrade -y
 """
