@@ -2,7 +2,7 @@
 sudo apt update && sudo apt upgrade -y
 
 #System_Setting
-sudo dpkg-reconfigure tzdata
+cp /usr/share/zoneinfo/Asia/Tokyo /etc/localtime
 sudo apt install -y task-japanese locales-all 
 sudo localectl set-locale LANG=ja_JP.UTF-8 LANGUAGE="ja_JP.UTF-8"
 source /etc/default/locale
