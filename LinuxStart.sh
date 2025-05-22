@@ -1,4 +1,5 @@
 #!/bin/sh
+set -eu
     main{
     case "$(whoami)" in
         root) sudo="";;
