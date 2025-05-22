@@ -1,9 +1,10 @@
-main{
+#!/bin/sh
+    main{
     case "$(whoami)" in
         root) sudo="";;
         *) sudo="$(first_of sudo doas run0 pkexec sudo-rs)" || error "Please install sudo/doas/run0/pkexec/sudo-rs to proceed.";;
     esac
-}
+    }
 #Linux_System_Update
 sudo apt update && sudo apt upgrade -y
 
