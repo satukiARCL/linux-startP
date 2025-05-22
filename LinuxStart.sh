@@ -17,7 +17,7 @@ sudo wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /u
 sudo chmod a+rx /usr/local/bin/yt-dlp
 sudo mv ${HOME}/linux-startP/yt-dlp.conf /usr/local/bin/
 sudo ln /usr/local/bin/yt-dlp.conf ${HOME}/yt-dlp.link
-sudo apt-get install ffmpeg -y
+sudo apt-get install -y ffmpeg
 cd /usr/local/src/
 sudo wget https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2
 sudo tar jxfv phantomjs-2.1.1-linux-x86_64.tar.bz2
