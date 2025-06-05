@@ -16,11 +16,8 @@ APPS=(
     gnome-tweaks
     gparted
     vlc
-    firefox
-    chromium-browser
     code
     exfat-fuse
-    exfat-utils
     unzip
     htop
     net-tools
