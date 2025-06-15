@@ -13,17 +13,24 @@ main() {
     esac
 
     # Linux システムのアップデート
-    show $sudo apt update && $sudo apt upgrade -y
+    show $sudo apt update
+    show $sudo apt upgrade -y
 
     # システム設定
-    show cp /usr/share/zoneinfo/Asia/Tokyo /etc/localtime
+    show cp /usr/share/zoneinfo/Asia/Tokyo /etc/localtime || true
     show $sudo apt install -y task-japanese locales-all 
-    show $sudo localectl set-locale LANG=ja_JP.UTF-8 LANGUAGE="ja_JP.UTF-8"
-    source /etc/default/locale
+    show $sudo localectl set-locale LANG=ja_JP.UTF-8 LANGUAGE="ja_JP.UTF-8" || true
+    # locale関連の設定ファイル編集
+    echo "LANG=ja_JP.UTF-8" | sudo tee /etc/default/locale
+    echo "LANGUAGE=ja_JP.UTF-8" | sudo tee -a /etc/default/locale
+
+    # 他のアプリケーションのインストール
     show $sudo apt install -y fcitx-mozc
     show $sudo apt install -y task-japanese-desktop
     show $sudo apt install -y exfat-fuse
     show $sudo ln -s /usr/sbin/mount.exfat-fuse /sbin/mount.exfat
+    
+    # Brave ブラウザのインストール
     show wget https://dl.brave.com/install.sh && $sudo sh install.sh
 
     # yt-dlp インストール
@@ -47,7 +54,8 @@ main() {
     show $sudo gem uninstall tilt -v 2.6.0
 
     # 再アップデート
-    show $sudo apt update && $sudo apt upgrade -y
+    show $sudo apt update
+    show $sudo apt upgrade -y
 
     # 依存関係のインストール
     show $sudo apt install -y git curl libssl-dev libreadline-dev zlib1g-dev autoconf bison build-essential libyaml-dev libreadline-dev libncurses5-dev libffi-dev libgdbm-dev
