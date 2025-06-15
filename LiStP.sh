@@ -4,77 +4,106 @@ set -eu
 # ユーティリティ関数
 available() { command -v "$1" >/dev/null; }
 show() { (set -x; "$@"); }
+error() { echo "エラー: $1" >&2; exit 1; }
+
+# OS情報の表示
+show_os_info() {
+    echo "\n---- 現在のOS情報 ----"
+    if [ -f /etc/os-release ]; then
+        # /etc/os-releaseがある場合は、その内容を表示
+        . /etc/os-release
+        echo "オペレーティングシステム: $NAME"
+        echo "バージョン: $VERSION"
+    else
+        # unameコマンドで情報を取得
+        echo "オペレーティングシステム: $(uname -s)"
+        echo "カーネルバージョン: $(uname -r)"
+    fi
+}
+
+# パッケージマネージャの検出
+detect_package_manager() {
+    if available apt-get; then
+        echo "apt"
+    elif available yum; then
+        echo "yum"
+    elif available dnf; then
+        echo "dnf"
+    elif available pacman; then
+        echo "pacman"
+    elif available zypper; then
+        echo "zypper"
+    else
+        error "サポートされていないパッケージマネージャです。apt, yum, dnf, pacman, または zypper のいずれかをインストールしてください。"
+    fi
+}
+
+# ステップを表示する関数
+step() {
+    echo "\n---- ${1} ----"
+}
 
 main() {
+    # 現在のOS情報を表示
+    show_os_info
+
     # スクリプトの実行ユーザーを確認
     case "$(whoami)" in
         root) sudo="";;
-        *) sudo="$(first_of sudo doas run0 pkexec sudo-rs)" || show "Please install sudo/doas/run0/pkexec/sudo-rs to proceed.";;
+        *) sudo="sudo";;
     esac
 
-    # Linux システムのアップデート
-    show $sudo apt update
-    show $sudo apt upgrade -y
+    # パッケージマネージャの確認
+    PM=$(detect_package_manager)
 
-    # システム設定
-    show cp /usr/share/zoneinfo/Asia/Tokyo /etc/localtime || true
-    show $sudo apt install -y task-japanese locales-all 
-    show $sudo localectl set-locale LANG=ja_JP.UTF-8 LANGUAGE="ja_JP.UTF-8" || true
-    # locale関連の設定ファイル編集
-    echo "LANG=ja_JP.UTF-8" | sudo tee /etc/default/locale
-    echo "LANGUAGE=ja_JP.UTF-8" | sudo tee -a /etc/default/locale
+    # システムのアップデート
+    step "システムのアップデート"
+    case "$PM" in
+        apt) show $sudo apt update && show $sudo apt upgrade -y ;;
+        yum) show $sudo yum update -y ;;
+        dnf) show $sudo dnf upgrade -y ;;
+        pacman) show $sudo pacman -Syu ;;
+        zypper) show $sudo zypper refresh && show $sudo zypper update ;;
+    esac
 
-    # 他のアプリケーションのインストール
-    show $sudo apt install -y fcitx-mozc
-    show $sudo apt install -y task-japanese-desktop
-    show $sudo apt install -y exfat-fuse
-    show $sudo ln -s /usr/sbin/mount.exfat-fuse /sbin/mount.exfat
-    
-    # Brave ブラウザのインストール
-    show wget https://dl.brave.com/install.sh && $sudo sh install.sh
+    # タイムゾーンの設定
+    step "タイムゾーンを Asia/Tokyo に設定"
+    show $sudo cp /usr/share/zoneinfo/Asia/Tokyo /etc/localtime || true
 
-    # yt-dlp インストール
-    show $sudo wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
-    show $sudo chmod a+rx /usr/local/bin/yt-dlp
-    show $sudo mv ${HOME}/linux-startP/yt-dlp.conf /usr/local/bin/
-    show $sudo ln /usr/local/bin/yt-dlp.conf ${HOME}/yt-dlp.link
-    show $sudo apt-get install -y ffmpeg
-    show cd /usr/local/src/
-    show $sudo wget https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2
-    show $sudo tar jxfv phantomjs-2.1.1-linux-x86_64.tar.bz2
-    show $sudo cp -pr phantomjs-2.1.1-linux-x86_64/bin/phantomjs /usr/bin/
-    show export OPENSSL_CONF=/etc/ssl/
+    # ロケールの設定
+    step "ロケールを日本語に設定"
+    show $sudo apt install -y locales || true
+    show $sudo locale-gen ja_JP.UTF-8 || true
+    echo "LANG=ja_JP.UTF-8" | $sudo tee /etc/default/locale
+    echo "LANGUAGE=ja_JP.UTF-8" | $sudo tee -a /etc/default/locale
 
-    # Ruby & Narou.rb インストール
-    show $sudo apt install -y ruby-full
-    show $sudo gem install narou
-    show wget -P /var/lib/gems/3.1.0/gems/narou-3.9.1/webnovel/ https://github.com/whiteleaf7/narou/blob/304aea554f918b6104225aa27a21febcc7fd19e7/webnovel/ncode.syosetu.com.yaml
-    show wget -P /var/lib/gems/3.1.0/gems/narou-3.9.1/webnovel/ https://github.com/whiteleaf7/narou/blob/304aea554f918b6104225aa27a21febcc7fd19e7/webnovel/novel18.syosetu.com.yaml
-    show $sudo gem install tilt -v 2.4.0
-    show $sudo gem uninstall tilt -v 2.6.0
+    # 必要なパッケージのインストール
+    step "必要なパッケージのインストール"
+    show $sudo apt install -y fcitx-mozc task-japanese-desktop exfat-fuse || true
 
-    # 再アップデート
-    show $sudo apt update
-    show $sudo apt upgrade -y
+    # Braveブラウザのインストール
+    step "Braveブラウザのインストール"
+    show wget https://dl.brave.com/install.sh && $sudo sh install.sh || true
 
-    # 依存関係のインストール
-    show $sudo apt install -y git curl libssl-dev libreadline-dev zlib1g-dev autoconf bison build-essential libyaml-dev libreadline-dev libncurses5-dev libffi-dev libgdbm-dev
-    
-    # rbenv のインストール
-    show curl -sL https://github.com/rbenv/rbenv-installer/raw/main/bin/rbenv-installer | bash -
-    echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> ~/.bashrc
-    echo 'eval "$(rbenv init -)"' >> ~/.bashrc
-    source ~/.bashrc
-    show rbenv install 3.3.4
-    show rbenv global 3.3.4
+    # yt-dlpのインストール
+    step "yt-dlpのインストール"
+    show $sudo wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp || true
+    show $sudo chmod a+rx /usr/local/bin/yt-dlp || true
 
-    # Python のインストール
-    show $sudo apt-get install python -y
-    show $sudo apt-get install python3 -y
-    show $sudo apt-get install python3-distutils -y
-    show $sudo apt-get install python3-pip -y
-    export PATH=$PATH:~/.local/bin
-    show $sudo apt update && $sudo apt upgrade -y
+    # ffmpegのインストール
+    step "FFmpegのインストール"
+    show $sudo apt install -y ffmpeg || true
+
+    # Ruby & Narou.rb のインストール
+    step "RubyとNarou.rbのインストール"
+    show $sudo apt install -y ruby-full || true
+    show $sudo gem install narou || true
+
+    # Pythonのインストール
+    step "PythonとPipのインストール"
+    show $sudo apt-get install -y python3 python3-distutils python3-pip || true
+
+    echo "\n---- インストールが完了しました。出力内容にエラーがないか確認してください。 ----"
 }
 
 main
