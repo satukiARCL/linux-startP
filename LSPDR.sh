@@ -1,13 +1,10 @@
 #!/bin/bash
 #
 # このスクリプトは、Linuxデスクトップ環境に日本語環境と便利なツールをセットアップします。
-# Debian/Ubuntu, Fedora/RHEL, Arch Linux ベースのシステムをサポートします。
+# systemdの有無を検出し、WSLやDockerコンテナのような環境にも対応します。
 #
 
 # スクリプトの堅牢性を高める設定
-# -e: コマンドが失敗したら即座に終了する
-# -u: 未定義の変数を参照したらエラーとする
-# -o pipefail: パイプラインの途中でコマンドが失敗した場合もエラーとする
 set -euo pipefail
 
 # --- グローバル変数 ---
@@ -46,15 +43,14 @@ define_distro_actions() {
 
     if available apt-get; then
         PM="apt"
-        update_system() {
-            show $SUDO apt-get update
-            show $SUDO apt-get upgrade -y
-        }
+        update_system() { show $SUDO apt-get update && show $SUDO apt-get upgrade -y; }
         install_packages() {
             local packages=(
                 locales fcitx-mozc task-japanese-desktop exfat-fuse
                 wget ffmpeg ruby-full python3 python3-pip
             )
+            # 最初にlocalesをインストールしないとlocale-genで失敗することがある
+            show $SUDO apt-get install -y locales
             show $SUDO apt-get install -y "${packages[@]}"
         }
     elif available dnf; then
@@ -67,66 +63,52 @@ define_distro_actions() {
             )
             show $SUDO dnf install -y "${packages[@]}"
         }
+    # ... 他のパッケージマネージャの定義は省略しません ...
     elif available yum; then
-        PM="yum"
-        update_system() { show $SUDO yum update -y; }
-        install_packages() {
-            # EPELリポジトリが必要な場合があります (例: ffmpeg)
-            # sudo yum install -y epel-release
-            local packages=(
-                langpacks-ja fcitx-mozc vlgothic-p-fonts
-                exfat-utils wget ffmpeg ruby python3 python3-pip
-            )
-            show $SUDO yum install -y "${packages[@]}"
-        }
+        PM="yum"; update_system() { show $SUDO yum update -y; }; install_packages() { local packages=(langpacks-ja fcitx-mozc vlgothic-p-fonts exfat-utils wget ffmpeg ruby python3 python3-pip); show $SUDO yum install -y "${packages[@]}"; }
     elif available pacman; then
-        PM="pacman"
-        update_system() { show $SUDO pacman -Syu --noconfirm; }
-        install_packages() {
-            local packages=(
-                fcitx5-mozc noto-fonts-cjk
-                exfat-utils wget ffmpeg ruby python python-pip
-            )
-            show $SUDO pacman -S --noconfirm "${packages[@]}"
-        }
+        PM="pacman"; update_system() { show $SUDO pacman -Syu --noconfirm; }; install_packages() { local packages=(fcitx5-mozc noto-fonts-cjk exfat-utils wget ffmpeg ruby python python-pip); show $SUDO pacman -S --noconfirm "${packages[@]}"; }
     elif available zypper; then
-        PM="zypper"
-        update_system() {
-            show $SUDO zypper refresh
-            show $SUDO zypper update -y
-        }
-        install_packages() {
-            local packages=(
-                glibc-locale fcitx-mozc noto-sans-cjk-jp-fonts
-                exfat-utils wget ffmpeg ruby python3 python3-pip
-            )
-            show $SUDO zypper install -y "${packages[@]}"
-        }
+        PM="zypper"; update_system() { show $SUDO zypper refresh && show $SUDO zypper update -y; }; install_packages() { local packages=(glibc-locale fcitx-mozc noto-sans-cjk-jp-fonts exfat-utils wget ffmpeg ruby python3 python3-pip); show $SUDO zypper install -y "${packages[@]}"; }
     else
         error "サポートされていないパッケージマネージャです。apt, dnf, yum, pacman, zypper のいずれかが必要です。"
     fi
     echo "パッケージマネージャ '$PM' を検出し、処理を準備しました。"
 }
 
-# タイムゾーンとロケールを設定する
+# タイムゾーンとロケールを設定する (systemd対応版)
 setup_localization() {
+    # systemdが稼働しているかのフラグ
+    local use_systemd=false
+    if [ -d /run/systemd/system ]; then
+        use_systemd=true
+    fi
+
     step "タイムゾーンを Asia/Tokyo に設定"
-    if available timedatectl; then
+    if [ "$use_systemd" = true ] && available timedatectl; then
         show $SUDO timedatectl set-timezone Asia/Tokyo
     else
-        echo "timedatectlコマンドが見つかりません。手動での設定を試みます。"
-        show $SUDO ln -sf /usr/share/zoneinfo/Asia/Tokyo /etc/localtime
+        echo "systemdが検出されなかったため、従来の方法でタイムゾーンを設定します。"
+        if [ -f /usr/share/zoneinfo/Asia/Tokyo ]; then
+            show $SUDO ln -sf /usr/share/zoneinfo/Asia/Tokyo /etc/localtime
+        else
+            echo "警告: /usr/share/zoneinfo/Asia/Tokyo が見つかりません。タイムゾーン設定をスキップします。"
+        fi
     fi
 
     step "ロケールを日本語に設定"
     if [ "$PM" = "apt" ]; then
-        # Debian/Ubuntu固有のロケール設定
+        # Debian/Ubuntu系は専用の方法が最も確実
         show $SUDO locale-gen ja_JP.UTF-8
         show $SUDO update-locale LANG=ja_JP.UTF-8
-    elif available localectl; then
+    elif [ "$use_systemd" = true ] && available localectl; then
+        # systemdが利用可能なその他のディストリビューション
         show $SUDO localectl set-locale LANG=ja_JP.UTF-8
     else
-        echo "localectlコマンドが見つかりません。ロケール設定をスキップします。"
+        # systemdが利用できない場合の汎用的なフォールバック
+        echo "systemdが検出されなかったため、従来の方法でロケールを設定します。"
+        echo "LANG=ja_JP.UTF-8" | show $SUDO tee /etc/locale.conf > /dev/null
+        echo "警告: ロケールを/etc/locale.confに書き込みました。環境によっては.bash_profile等への追記も必要です。"
     fi
 }
 
@@ -137,7 +119,6 @@ main() {
         SUDO=""
     else
         SUDO="sudo"
-        # 最初のsudoでパスワードを聞いておく
         $SUDO -v
         echo "このスクリプトはシステムの変更を行うため、sudo権限を使用します。"
     fi
@@ -148,20 +129,20 @@ main() {
     step "システムのアップデート"
     update_system
 
-    setup_localization
-
     step "必要なパッケージのインストール"
     install_packages
+    
+    # パッケージインストール後にロケール設定を行う
+    setup_localization
 
     step "Braveブラウザのインストール"
     local brave_installer
     brave_installer=$(mktemp)
-    # mktempで作成したファイルを確実に削除するためのトラップ
     trap 'rm -f "$brave_installer"' EXIT
     show wget https://dl.brave.com/install.sh -O "$brave_installer"
     show $SUDO sh "$brave_installer"
     rm -f "$brave_installer"
-    trap - EXIT # トラップを解除
+    trap - EXIT
 
     step "yt-dlpのインストール"
     show $SUDO wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
@@ -172,7 +153,7 @@ main() {
 
     echo -e "\n---- セットアップが完了しました ----"
     echo "出力内容にエラーがないか確認してください。"
-    echo "日本語入力やフォントを有効にするには、システムの再起動が必要な場合があります。"
+    echo "日本語入力やフォントを有効にするには、システムの再起動や再ログインが必要な場合があります。"
 }
 
 main "$@"
