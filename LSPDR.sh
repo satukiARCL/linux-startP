@@ -11,144 +11,102 @@
 set -euo pipefail
 
 # --- グローバル変数 ---
-# スクリプトの実行に必要な権限を管理
 SUDO=""
+PM=""
 
 # --- ユーティリティ関数 ---
+available() { command -v "$1" >/dev/null 2>&1; }
+show() { echo "+ $*"; "$@"; }
+error() { echo "エラー: $1" >&2; exit 1; }
+step() { echo -e "\n---- $1 ----"; }
 
-# コマンドの存在を確認する
-available() {
-    command -v "$1" >/dev/null 2>&1
-}
-
-# 実行するコマンドを画面に表示してから実行する
-show() {
-    echo "+ $*"
-    "$@"
-}
-
-# エラーメッセージを表示して終了する
-error() {
-    echo "エラー: $1" >&2
-    exit 1
-}
-
-# 各ステップのヘッダーを表示する
-step() {
-    echo -e "\n---- $1 ----"
-}
-
-# --- メイン処理関数 ---
+# --- OS・ディストリビューション固有の処理 ---
 
 # OS情報を表示する
 show_os_info() {
     step "現在のOS情報"
     if [ -f /etc/os-release ]; then
-        # /etc/os-release を読み込んで表示
         . /etc/os-release
         echo "オペレーティングシステム: ${NAME:-不明}"
         echo "バージョン: ${VERSION:-不明}"
     else
-        # uname コマンドでフォールバック
         echo "オペレーティングシステム: $(uname -s)"
         echo "カーネルバージョン: $(uname -r)"
     fi
 }
 
-# パッケージマネージャと、それに応じたコマンド、パッケージリストを設定する
-setup_distro_specifics() {
-    step "パッケージマネージャとディストリビューション固有の設定を確認"
+# システムをアップデートする関数（内容は動的に定義される）
+update_system() { error "update_system関数が定義されていません。"; }
+# パッケージをインストールする関数（内容は動的に定義される）
+install_packages() { error "install_packages関数が定義されていません。"; }
 
-    local pm
+# パッケージマネージャを検出し、それに応じた処理関数を定義する
+define_distro_actions() {
+    step "ディストリビューション固有の処理を準備"
+
     if available apt-get; then
-        pm="apt"
-        SUDO_INSTALL="$SUDO apt-get install -y"
-        SUDO_UPDATE="$SUDO apt-get update && $SUDO apt-get upgrade -y"
-        # Debian/Ubuntu向けのパッケージリスト
-        PACKAGES=(
-            locales
-            fcitx-mozc
-            task-japanese-desktop # 日本語フォントや関連ツールをまとめて導入
-            exfat-fuse
-            wget
-            ffmpeg
-            ruby-full
-            python3
-            python3-pip
-        )
+        PM="apt"
+        update_system() {
+            show $SUDO apt-get update
+            show $SUDO apt-get upgrade -y
+        }
+        install_packages() {
+            local packages=(
+                locales fcitx-mozc task-japanese-desktop exfat-fuse
+                wget ffmpeg ruby-full python3 python3-pip
+            )
+            show $SUDO apt-get install -y "${packages[@]}"
+        }
     elif available dnf; then
-        pm="dnf"
-        SUDO_INSTALL="$SUDO dnf install -y"
-        SUDO_UPDATE="$SUDO dnf upgrade -y"
-        # Fedora/RHEL向けのパッケージリスト
-        PACKAGES=(
-            glibc-langpack-ja # ロケール用
-            fcitx5-mozc # fcitx5が主流
-            google-noto-cjk-fonts # 日本語フォント
-            exfat-utils
-            wget
-            ffmpeg
-            ruby
-            python3
-            python3-pip
-        )
+        PM="dnf"
+        update_system() { show $SUDO dnf upgrade -y; }
+        install_packages() {
+            local packages=(
+                glibc-langpack-ja fcitx5-mozc google-noto-cjk-fonts
+                exfat-utils wget ffmpeg ruby python3 python3-pip
+            )
+            show $SUDO dnf install -y "${packages[@]}"
+        }
     elif available yum; then
-        pm="yum"
-        SUDO_INSTALL="$SUDO yum install -y"
-        SUDO_UPDATE="$SUDO yum update -y"
-        # CentOS/RHEL (旧) 向けのパッケージリスト
-        PACKAGES=(
-            # yumではパッケージ名が異なる場合がある
-            langpacks-ja
-            fcitx-mozc
-            vlgothic-p-fonts # 日本語フォントの例
-            exfat-utils
-            wget
-            ffmpeg # EPELリポジトリが必要な場合が多い
-            ruby
-            python3
-            python3-pip
-        )
+        PM="yum"
+        update_system() { show $SUDO yum update -y; }
+        install_packages() {
+            # EPELリポジトリが必要な場合があります (例: ffmpeg)
+            # sudo yum install -y epel-release
+            local packages=(
+                langpacks-ja fcitx-mozc vlgothic-p-fonts
+                exfat-utils wget ffmpeg ruby python3 python3-pip
+            )
+            show $SUDO yum install -y "${packages[@]}"
+        }
     elif available pacman; then
-        pm="pacman"
-        SUDO_INSTALL="$SUDO pacman -S --noconfirm"
-        SUDO_UPDATE="$SUDO pacman -Syu --noconfirm"
-        # Arch Linux向けのパッケージリスト
-        PACKAGES=(
-            # Archではロケールは手動設定が基本
-            fcitx5-mozc
-            noto-fonts-cjk
-            exfat-utils
-            wget
-            ffmpeg
-            ruby
-            python
-            python-pip
-        )
+        PM="pacman"
+        update_system() { show $SUDO pacman -Syu --noconfirm; }
+        install_packages() {
+            local packages=(
+                fcitx5-mozc noto-fonts-cjk
+                exfat-utils wget ffmpeg ruby python python-pip
+            )
+            show $SUDO pacman -S --noconfirm "${packages[@]}"
+        }
     elif available zypper; then
-        pm="zypper"
-        SUDO_INSTALL="$SUDO zypper install -y"
-        SUDO_UPDATE="$SUDO zypper refresh && $SUDO zypper update -y"
-        # openSUSE向けのパッケージリスト
-        PACKAGES=(
-            glibc-locale
-            fcitx-mozc
-            noto-sans-cjk-jp-fonts
-            exfat-utils
-            wget
-            ffmpeg
-            ruby
-            python3
-            python3-pip
-        )
+        PM="zypper"
+        update_system() {
+            show $SUDO zypper refresh
+            show $SUDO zypper update -y
+        }
+        install_packages() {
+            local packages=(
+                glibc-locale fcitx-mozc noto-sans-cjk-jp-fonts
+                exfat-utils wget ffmpeg ruby python3 python3-pip
+            )
+            show $SUDO zypper install -y "${packages[@]}"
+        }
     else
         error "サポートされていないパッケージマネージャです。apt, dnf, yum, pacman, zypper のいずれかが必要です。"
     fi
-    echo "パッケージマネージャ '$pm' を検出しました。"
-    # グローバル変数に設定をエクスポート
-    export SUDO_INSTALL SUDO_UPDATE PACKAGES pm
+    echo "パッケージマネージャ '$PM' を検出し、処理を準備しました。"
 }
-
 
 # タイムゾーンとロケールを設定する
 setup_localization() {
@@ -161,7 +119,7 @@ setup_localization() {
     fi
 
     step "ロケールを日本語に設定"
-    if [ "$pm" = "apt" ]; then
+    if [ "$PM" = "apt" ]; then
         # Debian/Ubuntu固有のロケール設定
         show $SUDO locale-gen ja_JP.UTF-8
         show $SUDO update-locale LANG=ja_JP.UTF-8
@@ -169,38 +127,41 @@ setup_localization() {
         show $SUDO localectl set-locale LANG=ja_JP.UTF-8
     else
         echo "localectlコマンドが見つかりません。ロケール設定をスキップします。"
-        echo "手動で /etc/locale.conf などを編集してください。"
     fi
 }
 
+
+# --- メイン処理 ---
 main() {
-    # rootで実行されているか確認し、必要に応じてSUDO変数を設定
     if [ "$(id -u)" -eq 0 ]; then
         SUDO=""
     else
         SUDO="sudo"
-        echo "このスクリプトはシステムの変更を行うため、sudoパスワードの入力が必要になる場合があります。"
+        # 最初のsudoでパスワードを聞いておく
+        $SUDO -v
+        echo "このスクリプトはシステムの変更を行うため、sudo権限を使用します。"
     fi
 
     show_os_info
-    setup_distro_specifics
+    define_distro_actions
 
     step "システムのアップデート"
-    show $SUDO_UPDATE
+    update_system
 
     setup_localization
 
     step "必要なパッケージのインストール"
-    # shellcheck disable=SC2086 # 変数展開を意図的に行っている
-    show $SUDO_INSTALL "${PACKAGES[@]}"
+    install_packages
 
     step "Braveブラウザのインストール"
-    # 一時ファイルにダウンロードして実行し、後始末する
     local brave_installer
     brave_installer=$(mktemp)
+    # mktempで作成したファイルを確実に削除するためのトラップ
+    trap 'rm -f "$brave_installer"' EXIT
     show wget https://dl.brave.com/install.sh -O "$brave_installer"
     show $SUDO sh "$brave_installer"
-    rm "$brave_installer"
+    rm -f "$brave_installer"
+    trap - EXIT # トラップを解除
 
     step "yt-dlpのインストール"
     show $SUDO wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
@@ -214,5 +175,4 @@ main() {
     echo "日本語入力やフォントを有効にするには、システムの再起動が必要な場合があります。"
 }
 
-# スクリプトの実行開始
-main
+main "$@"
